@@ -45,6 +45,16 @@ def article_description(url):
     return ""
 
 
+def is_archive_link(title, path):
+    """Exclude navigation/archive pages from the news feed."""
+    normalized = clean(title).casefold()
+    if normalized in {"complete archive", "news archive", "view archive"}:
+        return True
+    if re.fullmatch(r"/news/\d{4}/index\.php", path, flags=re.IGNORECASE):
+        return True
+    return False
+
+
 def main():
     soup = get_soup(SOURCE)
     heading = next(
@@ -54,7 +64,6 @@ def main():
     )
     if heading is None:
         raise RuntimeError("Recent News heading not found; preserving existing news.csv")
-
     headlines = []
     seen = set()
     for element in heading.next_elements:
@@ -71,13 +80,13 @@ def main():
         if (parsed.netloc != "www.unomaha.edu"
                 or not parsed.path.startswith("/news/")
                 or not parsed.path.endswith(".php")
+                or is_archive_link(title, parsed.path)
                 or url in seen):
             continue
         seen.add(url)
         headlines.append({"title": title, "description": article_description(url), "url": url})
         if len(headlines) >= MAX_ARTICLES:
             break
-
     if not headlines:
         raise RuntimeError("No UNO news articles found; preserving existing news.csv")
     with open("news.csv", "w", newline="", encoding="utf-8") as file:
