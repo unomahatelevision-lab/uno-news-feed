@@ -1,45 +1,45 @@
+"""Convert UNO news.csv into a valid RSS 2.0 news.xml feed."""
 import csv
 from datetime import datetime, timezone
-from pathlib import Path
+from email.utils import format_datetime
 from xml.etree import ElementTree as ET
 
-CSV_PATH = Path(__file__).resolve().parent / 'news.csv'
-OUTPUT_PATH = Path(__file__).resolve().parent / 'news.xml'
-SITE = 'https://www.unomaha.edu/news/'
+SOURCE = "https://www.unomaha.edu/news/"
+OUTPUT = "news.xml"
 
-if not CSV_PATH.exists():
-    raise SystemExit('news.csv not found. Run fetch_news.py first.')
 
-with CSV_PATH.open('r', encoding='utf-8-sig', newline='') as file:
-    rows = list(csv.DictReader(file))
+def main():
+    with open("news.csv", newline="", encoding="utf-8-sig") as file:
+        rows = list(csv.DictReader(file))
+    if not rows:
+        raise RuntimeError("CSV contains no news stories; preserving previous RSS")
 
-items = [r for r in rows if (r.get('title') or '').strip() and (r.get('url') or '').startswith('https://www.unomaha.edu/news/')]
-if not items:
-    raise SystemExit('No valid UNO headlines found; existing RSS feed preserved.')
+    rss = ET.Element("rss", version="2.0")
+    channel = ET.SubElement(rss, "channel")
+    for tag, value in (
+        ("title", "University of Nebraska Omaha News"),
+        ("link", SOURCE),
+        ("description", "Latest news and headlines from the UNO News Center"),
+        ("language", "en-us"),
+        ("lastBuildDate", format_datetime(datetime.now(timezone.utc))),
+    ):
+        ET.SubElement(channel, tag).text = value
 
-rss = ET.Element('rss', {'version': '2.0'})
-channel = ET.SubElement(rss, 'channel')
-for tag, value in [
-    ('title', 'UNO News Center'),
-    ('link', SITE),
-    ('description', 'Latest headlines from the University of Nebraska at Omaha News Center.'),
-    ('language', 'en-us'),
-    ('lastBuildDate', datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S +0000')),
-]:
-    ET.SubElement(channel, tag).text = value
+    for row in rows:
+        title = (row.get("title") or "").strip()
+        url = (row.get("url") or "").strip()
+        if not title or not url:
+            continue
+        item = ET.SubElement(channel, "item")
+        ET.SubElement(item, "title").text = title
+        ET.SubElement(item, "link").text = url
+        ET.SubElement(item, "guid", isPermaLink="true").text = url
+        ET.SubElement(item, "description").text = (row.get("description") or "").strip()
 
-for row in items[:30]:
-    item = ET.SubElement(channel, 'item')
-    title = row['title'].strip()
-    url = row['url'].strip()
-    for tag, value in [('title', title), ('link', url), ('guid', url)]:
-        element = ET.SubElement(item, tag)
-        element.text = value
-        if tag == 'guid':
-            element.set('isPermaLink', 'true')
-    if (row.get('description') or '').strip():
-        ET.SubElement(item, 'description').text = row['description'].strip()
+    ET.indent(rss, space="  ")
+    ET.ElementTree(rss).write(OUTPUT, encoding="utf-8", xml_declaration=True)
+    print(f"Generated {OUTPUT} from {len(rows)} CSV rows")
 
-ET.indent(rss, space='  ')
-ET.ElementTree(rss).write(OUTPUT_PATH, encoding='utf-8', xml_declaration=True)
-print(f'Generated {OUTPUT_PATH.name} with {len(items[:30])} headlines')
+
+if __name__ == "__main__":
+    main()
